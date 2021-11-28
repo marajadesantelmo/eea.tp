@@ -1,0 +1,146 @@
+---
+title: "TP2"
+output: html_document
+---
+
+# Trabajo Práctico Final | Enfoque Estadístico del Aprendizaje
+
+Seteo inical
+
+```{r, echo=FALSE}
+options(scipen = 99)
+library(tidyverse)
+library(eph)
+devtools::install_github("Guidowe/occupationcross")
+library(occupationcross)
+library(GGally)
+library(broom)
+library(purrr)
+
+```
+
+## Preprocesamiento
+
+Descargamos la Encuesta Permanente de Hogares utilizando el paquete ```eph```. Empezamos analizando el cuarto timestre del 2019.
+
+``` {r}
+#Descargamos la base
+df <- get_microdata(year=2019, trimester=3, type='individual')
+#La etiquetamos de forma automática con comando del paquete eph
+df <- organize_labels(df=df, type='individual')
+
+#La guardo para no tener que estar bajándola todo el tiempo
+#saveRDS(df, 'EPH2019_3.Rds')
+```
+
+En este trabajo vamos a explicar la probabilidad de tener un trabajo precario según las siguientes predictoras: el género, el rango etario, la complejidad del puesto de trabajo (alta complejidad vs. media y baja), el sector productivo en el que la persona está inserta (industrial vs. no industrial), el nivel educativo (universitario vs. resto), la región (GBA vs. resto del país), la cantidad de adultos en el hogar y la realización o no de teletrabajo (atributo a construir en base a la propuesta metodológica del CEPXXI - MDP). A continuación creamos las variables.
+
+``` {r}
+
+df <- readRDS('EPH2019_3.Rds')
+
+df <- df %>% 
+  filter(ESTADO==1 & CAT_OCUP==3) %>%                                 #Filtramos a asalariados ocupados
+  select(REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
+         PP04C, PP04C99, PONDERA) 
+
+#Generamos variable sobre complejidad del puesto de trabajo 'Baja', 'Media' o 'Alta', utilizando el paquete occupationcross 
+df <- reclassify_to_isco08(base = df , variable = PP04D_COD, classif_origin = 'CNO2017', add_skill = T)
+
+#La traducimos al español
+df <- df %>%  
+    mutate(complejidad= case_when(skill_level=='Low' ~ 'Baja', 
+                                  skill_level=='Medium' ~ 'Media',
+                                  skill_level=='High' ~ 'Alta'))
+#Generamos otras variables
+df <- df %>% 
+        #Rango Etario
+  mutate(rango_etario= factor(case_when(CH06 < 25 ~ 'Joven',  
+                                 CH06 %in% 25:40 ~ 'Joven adulto', 
+                                 CH06 %in% 41:59 ~ 'Adulto', 
+                                 CH06 > 59 ~ 'Adulto mayor'),
+                        levels= c('Joven', 'Joven adulto', 'Adulto', 'Adulto Mayor')),
+                        
+        #Precariedad laboral (tomando como referencia realización de aportes jubilatorios)
+          precariedad= factor(case_when(PP07H == 1 ~ "Si",
+                                 PP07H == 2 ~ "No"),
+                        levels= c('Si', 'No')),
+        #Tamaño del establecimiento  
+          tamanio= factor(case_when(PP04C %in% 1:6  |(PP04C %in% 99 & PP04C99 == 1)~ "Pequeño",
+                             PP04C %in% 7:8  ~ "Mediano",
+                             PP04C %in% 9:12 |(PP04C %in% 99 & PP04C99 == 3)~ "Grande"),
+                        levels= c('Pequeño', 'Mediano', 'Grande')), 
+        #Nivel educativo
+          nivel_educativo= factor(case_when(CH12 %in% 1:3 ~ 'Primario', 
+                                     CH12 %in% 4:6 & CH13==2 ~ 'Primario', 
+                                     CH12 %in% 4:6 & CH13==1 ~ 'Secundario', 
+                                     CH12 %in% 7:8 & CH13==2 ~ 'Secundario',
+                                     CH12 %in% 7:8 & CH13==1 ~ 'Universitario'),
+                        levels= c('Primario', 'Secundario', 'Universitario'))) %>% 
+  select(precariedad, rango_etario, tamanio, complejidad, PONDERA)       # Nos quedamos con las variables que entran para el modelo
+
+#Faltan generar las siguientes variables: genero, Region, Sector productivo, cantidad de adultos en el hogar y la realización o no de teletrabajo
+#Ver que otras variables podriamos usar (salario?)
+
+
+
+```
+
+
+## Analisis exploratorio de los datos
+
+``` {r}
+# VER. No pude hacer andar ggpairs
+
+g <- df %>% select(select(precariedad, rango_etario, tamanio, complejidad) %>% 
+                ggpairs(title = "Correlograma de variables",
+                mapping = aes(colour= factor(precariedad)),
+                progress = FALSE, 
+                lower=list(combo=wrap("facethist", binwidth=0.8))) +
+        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+        theme_bw() +
+        scale_fill_brewer(palette="Set1") +
+        scale_color_brewer(palette="Set1")
+        
+        
+g <- df %>% select(select(precariedad, rango_etario, tamanio, complejidad) %>%         
+  ggpairs(., mapping = aes(colour = genero, alpha= 0.5), title = "Matriz de correlaciones",
+          upper = list(continuous = wrap("cor", size = 2, hjust=0.5)), legend = 15) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle=45, vjust=0.5), legend.position = "bottom") +
+  theme(axis.title.y.right = element_text(size=4,face="bold"))        
+        
+        
+
+
+```
+
+
+## Modelo Logit
+
+``` {r}
+df <- df %>% select(-PONDERA) #Saco por ahora la ponderación
+
+glm1 <- glm(data = df, precariedad ~ rango_etario + tamanio + complejidad, family = 'binomial')
+
+## DUDA: cómo meter la ponderaciones de los registros de la EPH en la estimación del modelo logit???
+
+
+# veo los resultados
+tidy(glm1)
+```
+
+El modelo da con estimadores estadísticamente significativos. Ser Adulto o Joven adulto disminuye la probabilidad de tener empleo precario con respecto a a ser adulto mayor, la probabilidad de ser precario disminuye cuanto más grande es el establecimiento donde se trabaja y también la probialidad de ser precario aumenta si la complejidad del puesto es baja o media con resecto a complejidad alta.  
+
+VER: qué categorías ponemos como base en cada variable predictora??
+
+``` {r}
+#Genero predicciones
+
+df$pred <- predict(glm1, df,type.predict = "response")   # Chequear
+
+```
+
+
+
+
