@@ -7,7 +7,7 @@ output: html_document
 
 Seteo inical
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE}
 options(scipen = 99)
 library(tidyverse)
 library(eph) 
@@ -17,6 +17,8 @@ library(GGally)
 library(broom)
 library(purrr)
 library(stringr)
+library(data.table)
+library(pROC)
 
 ```
 
@@ -27,11 +29,11 @@ Descargamos la Encuesta Permanente de Hogares utilizando el paquete ```eph```. E
 ``` {r}
 #Descargamos la base
 df <- get_microdata(year=2019, trimester=3, type='individual')
-#La etiquetamos de forma automática con comando del paquete eph
+#La etiquetamos de forma automática con el comando del paquete eph
 df <- organize_labels(df=df, type='individual')
 
 #La guardo para no tener que estar bajándola todo el tiempo
-#saveRDS(df, 'EPH2019_3.Rds')
+saveRDS(df, 'EPH2019_3.Rds')
 ```
 
 En este trabajo vamos a explicar la probabilidad de tener un trabajo precario según las siguientes predictoras: el género, el rango etario, la complejidad del puesto de trabajo (alta complejidad vs. media y baja), el sector productivo en el que la persona está inserta (industrial vs. no industrial), el nivel educativo (universitario vs. resto), la región (GBA vs. resto del país), la cantidad de adultos en el hogar y la realización o no de teletrabajo (atributo a construir en base a la propuesta metodológica del CEPXXI - MDP). A continuación creamos las variables.
@@ -60,12 +62,12 @@ df <- df %>%
                                  CH06 %in% 25:40 ~ 'Joven adulto', 
                                  CH06 %in% 41:59 ~ 'Adulto', 
                                  CH06 > 59 ~ 'Adulto mayor'),
-                        levels= c('Joven', 'Joven adulto', 'Adulto', 'Adulto Mayor')),
+                        levels= c('Joven', 'Joven adulto', 'Adulto', 'Adulto mayor')),
                         
         #Precariedad laboral (tomando como referencia realización de aportes jubilatorios)
-          precariedad= factor(case_when(PP07H == 1 ~ "Si",
-                                 PP07H == 2 ~ "No"),
-                        levels= c('Si', 'No')),
+          precariedad= factor(case_when(PP07H == 1 ~ "Precario",
+                                        PP07H == 2 ~ "No precario"),
+                        levels= c('No precario', 'Precario')),
         #Tamaño del establecimiento  
           tamanio= factor(case_when(PP04C %in% 1:6  |(PP04C %in% 99 & PP04C99 == 1)~ "Pequeño",
                              PP04C %in% 7:8  ~ "Mediano",
@@ -116,95 +118,192 @@ df <- df %>%
 
 
         subsidio = factor(case_when(V5_M == 0 ~ "no", TRUE~ "si"),
-                          levels = c("no", "si")))   %>% 
-        
-
-        #mayores en el hogar?  la variables que conoczco es mayores a 10 años....
+                          levels = c("no", "si")))   %>%
           
-      select(precariedad, genero, nivel_educativo, rango_etario, sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, PONDERA) # Nos quedamos con las variables que entran para el modelo
-
-#Faltan generar las siguientes variables: cantidad de adultos en el hogar 
-
-df <- df[complete.cases(df), ] #hay missings en tamanio y en ipcf
+      select(precariedad, genero, nivel_educativo, rango_etario, 
+            sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, PONDERA) # Nos quedamos con las variables que entran para el modelo
 
 
+```
 
+Limpieza de missing values
 
+``` {r}
+#Chequeamos cuantas missings hay
 
+na_count <-sapply(df, function(y) sum(length(which(is.na(y)))))
+na_count <- data.frame(na_count)
 
+#Nos quedamos con casos sin missings
+
+df <- df[complete.cases(df), ] 
 ```
 
 
 ## Analisis exploratorio de los datos
 
+### Correlación entre variables
+
 ``` {r}
-# VER. No pude hacer andar ggpairs
 
-g <- df %>% select(select(precariedad, rango_etario, tamanio, complejidad) %>% 
-                ggpairs(title = "Correlograma de variables",
-                mapping = aes(colour= factor(precariedad)),
-                progress = FALSE, 
-                lower=list(combo=wrap("facethist", binwidth=0.8))) +
-        theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
-        theme_bw() +
-        scale_fill_brewer(palette="Set1") +
-        scale_color_brewer(palette="Set1")
-        
-        
-g <- df %>% select(select(precariedad, rango_etario, tamanio, complejidad) %>%         
-  ggpairs(., mapping = aes(colour = genero, alpha= 0.5), title = "Matriz de correlaciones",
-          upper = list(continuous = wrap("cor", size = 2, hjust=0.5)), legend = 15) + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle=45, vjust=0.5), legend.position = "bottom") +
-  theme(axis.title.y.right = element_text(size=4,face="bold"))        
-        
-        
+#Saco el ponderador
+df_chi <- df %>% select(-PONDERA)
 
+#Calculo chi2 entre precariedad y cada una de las variables predictoras
+CHIS <- lapply(df_chi[,-1], function(x) chisq.test(df_chi[,1], x))
+#Imprimo resultados
+rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+```
+La variable explicada parece ser independiente de todo el resto
 
-#este anda! pero como son variables categóricas no sé si aporta mucho. me parece mejor un chi test
-  
-  df %>% ggpairs(., aes(color = genero), 
-          upper = list(continuous = wrap("cor", size = 3, hjust=0.5)), legend = 25) + 
-  theme_bw() +
-  theme(axis.text.x = element_text(angle=45, vjust=0.5), legend.position = "bottom")
-  
-  
-  #chi test
-  
-  table(df) #no pude armar bien esto.....
-  
-  chi2 = chisq.test(df, correct=F)
-  c(chi2$statistic, chi2$p.value)
-  
+``` {r}
+#Genero vector de variables para correr test sobre todas las columnas
+variables <- ls(df_chi)
+
+#Genero lista en donde guardo las tablas con los chi2 para cada variable
+chiList <- list()
+
+#Con este loop voy guardando los chi2 en una lista
+for (i in 1:length(variables)) { 
+#Estimo test
+CHIS <- lapply(df_chi[,-i], function(x) chisq.test(df_chi[,i], x))
+#Imprimo resultados
+tabla_chi <- rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+#Los guardo en una lista
+chiList[[variables[i]]] <- tabla_chi
+}
+
+#Con la lista generada ahora se pueden ver todos los test, por ejemplo, para los test de la variable complejidad con cada una de las otras variables:
+chiList[["complejidad"]]
+
 
 ```
-
 
 ## Modelo Logit
 
 ``` {r}
-df <- df %>% select(-PONDERA) #Saco por ahora la ponderación
-
-glm1 <- glm(data = df, precariedad ~ rango_etario + tamanio + complejidad, family = 'binomial')
-
-## DUDA: cómo meter la ponderaciones de los registros de la EPH en la estimación del modelo logit???
-
+glm1 <- glm(data = df, precariedad ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo, family = 'binomial')
 
 # veo los resultados
 tidy(glm1)
+
 ```
 
 El modelo da con estimadores estadísticamente significativos. Ser Adulto o Joven adulto disminuye la probabilidad de tener empleo precario con respecto a a ser adulto mayor, la probabilidad de ser precario disminuye cuanto más grande es el establecimiento donde se trabaja y también la probialidad de ser precario aumenta si la complejidad del puesto es baja o media con resecto a complejidad alta.  
+
+``` {r}
+#Probamos usando el ponderador
+
+glm2 <- glm(data = df, precariedad ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo, family = 'binomial', weights = PONDERA)
+
+# veo los resultados
+tidy(glm2)
+
+#VER! Da un warning de que los iteradores no convergen y después los beta dan cualquier valor
+
+```
 
 VER: qué categorías ponemos como base en cada variable predictora??
 
 ``` {r}
 #Genero predicciones
 
-df$pred <- predict(glm1, df,type.predict = "response")   # Chequear
+df$pred <- glm1$fitted.values
+
+
 
 ```
 
 
+#Evaluación de modelos
+
+## Violin plot
+
+``` {r}
+ggplot(df, aes(x=precariedad, y=pred, group=precariedad, fill=factor(precariedad))) + 
+  geom_violin() +
+  theme_bw() +
+  guides(scale="none") +
+  labs(title='Violin plot', subtitle='Modelo 1', y='Probabilidad predicha')
+```
+
+El modelo con todas las predictoras clasifica bien a los precarios, pero no es muy bueno para los no precarios.
+
+## Gráfico de Hosmer-Lemeshow
 
 
+``` {r}
+#Funcion que dieron en la práctica del curso
+
+Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, positive_value, color='forestgreen', nudge_x=0, nudge_y=0.05){
+  # Asignar los grupos a las observaciones de acuerdo a la probabilidad predicha
+  dataset['group'] <- bin(dataset[predicted_column], nbins = bins, method = 'l', labels=c(1:bins))
+  # Contar la cantidad de casos positivos por grupo
+  positive_class <- dataset %>% filter(!!sym(class_column)==positive_value) %>% group_by(group) %>% count()
+  # Obtener la media de las predicciones por grupo
+  HL_df <- dataset %>% group_by(group) %>% summarise(pred=mean(!!sym(predicted_column)), count=n()) %>%
+            inner_join(.,positive_class) %>%
+            mutate(freq=n/count)
+  # Gráfico 
+  HM_plot <- ggplot(HL_df, aes(x=pred, y=freq)) + 
+    geom_point(aes(size=n), color=color) +
+    geom_text(aes(label=n),nudge_y = nudge_y)+
+    geom_abline(slope = 1, intercept = 0, linetype='dashed') + 
+    theme_bw() +
+    labs(title='Hosmer-Lemeshow', size='Casos', x="Probabilidad Predicha", y="Frecuencia observada")
+  return(HM_plot)
+}
+
+# Modelo completo
+Hosmer_Lemeshow_plot(df, 'pred', 'precariedad', 10, 1) +
+  labs(subtitle="Modelo1")
+```
+
+
+No lo puedo hacer funcionar VER
+
+## Curva ROC
+
+``` {r}
+
+roc <- roc(response=df$precariedad, predictor=df$pred)
+
+ggroc(roc, size=1) +                                           ### Aca podemos graficar varios modelos, ver como lo tienen en la practica
+  geom_abline(slope = 1, intercept = 1, linetype='dashed') +
+  theme_bw() + 
+  labs(title='Curvas ROC', color='Modelo')
+
+```
+
+Este funciona bien. Ver después de graficar los distintos modelos que hagamos en un mismo gráfico como lo tienen en la práctica
+
+## Punto de corte
+
+``` {r}
+
+### Modificar lo que viene a continuación
+
+
+
+#Funcion tomada de la practica
+prediction_metrics <- function(cutoff, predictions=prediction_full){
+  tab <- predictions %>% 
+    mutate(predicted_class = if_else(.fitted > cutoff, 1, 0),
+           Survived = factor(Survived))
+  confusionMatrix(table(tab$predicted_class, tab$Survived), positive = "1") %>%
+    tidy() %>%
+    select(term, estimate) %>%
+    filter(term %in% c('accuracy', 'sensitivity', 'specificity', 'precision')) %>%
+    mutate(cutoff = cutoff)
+}
+
+cutoffs = seq(0.05,0.95,0.01)
+logit_pred = map_df(cutoffs, prediction_metrics) %>% 
+  mutate(term = as.factor(term), estimate = round(estimate, 3))
+ggplot(logit_pred, aes(cutoff,estimate, group=term, color=term)) + geom_line(size=1) +
+  theme_bw() +
+  labs(title= 'Accuracy, Sensitivity, Specificity y Precision', subtitle= 'Modelo completo', color="")
+
+
+
+```
