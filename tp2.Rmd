@@ -43,9 +43,9 @@ En este trabajo vamos a explicar la probabilidad de tener un trabajo precario se
 df <- readRDS('EPH2019_3.Rds')
 
 df <- df %>% 
-  filter(ESTADO==1 & CAT_OCUP==3) %>%                                 #Filtramos a asalariados ocupados
-  select(REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
-         PP04C, PP04C99, PP04G, V5_M, DECCFR,  PONDERA) 
+
+  select(ESTADO, CAT_OCUP, REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
+         PP04C, PP04C99, PP04G, V5_M, DECCFR, CODUSU, NRO_HOGAR, PONDERA) 
 
 #Generamos variable sobre complejidad del puesto de trabajo 'Baja', 'Media' o 'Alta', utilizando el paquete occupationcross 
 df <- reclassify_to_isco08(base = df , variable = PP04D_COD, classif_origin = 'CNO2017', add_skill = T)
@@ -118,10 +118,24 @@ df <- df %>%
 
 
         subsidio = factor(case_when(V5_M == 0 ~ "no", TRUE~ "si"),
-                          levels = c("no", "si")))   %>%
+                          levels = c("no", "si")), 
+        dependiente_cuidados= case_when(
+                                  CH06 < 18 | CH06 > 75   ~ "Dependiente",    #Menores 18 y adultos mayores de 75
+                                  TRUE       ~ "No dependiente")) %>% 
+  
+  group_by(CODUSU,NRO_HOGAR) %>% 
+  
+  mutate(qdependientes = sum(dependiente_cuidados=="Dependiente"), 
+         dependientes= case_when(
+           qdependientes>0 ~ "Hogar con dependientes",
+           TRUE            ~ "Hogar sin dependientes")) %>% 
+  
+  ungroup()  %>%
+  
+  filter(ESTADO==1 & CAT_OCUP==3) %>%                                 #Filtramos a asalariados ocupados
           
-      select(precariedad, genero, nivel_educativo, rango_etario, 
-            sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, PONDERA) # Nos quedamos con las variables que entran para el modelo
+  select(precariedad, genero, nivel_educativo, rango_etario, 
+            sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, dependientes, PONDERA) # Nos quedamos con las variables que entran para el modelo
 
 
 ```
