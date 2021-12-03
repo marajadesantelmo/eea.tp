@@ -7,7 +7,7 @@ output: html_document
 
 Seteo inical
 
-```{r, echo=FALSE, warning=FALSE}
+```{r echo=FALSE, warning=FALSE}
 options(scipen = 99)
 library(tidyverse)
 library(eph) 
@@ -37,25 +37,26 @@ df <- organize_labels(df=df, type='individual')
 saveRDS(df, 'EPH2019_3.Rds')
 ```
 
-En este trabajo vamos a explicar la probabilidad de tener un trabajo precario según las siguientes predictoras: el género, el rango etario, la complejidad del puesto de trabajo (alta complejidad vs. media y baja), el sector productivo en el que la persona está inserta (industrial vs. no industrial), el nivel educativo (universitario vs. resto), la región (GBA vs. resto del país), la cantidad de adultos en el hogar y la realización o no de teletrabajo (atributo a construir en base a la propuesta metodológica del CEPXXI - MDP). A continuación creamos las variables.
+En este trabajo vamos a explicar la probabilidad de tener un trabajo precario según las siguientes predictoras: el género, el rango etario, la complejidad del puesto de trabajo (alta complejidad vs. media y baja), el sector productivo, el nivel educativo, la región, la cantidad de personas dependientes de cuidados en el hogar del empleado/a y la realización o no de teletrabajo. A continuación creamos las variables.
 
-``` {r}
+```{r echo=TRUE, warning=FALSE}
 
 df <- readRDS('EPH2019_3.Rds')
 
 df <- df %>% 
 
   select(ESTADO, CAT_OCUP, REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
-         PP04C, PP04C99, PP04G, V5_M, DECCFR, CODUSU, NRO_HOGAR, PONDERA) 
+         PP04C, PP04C99, PP04G, V5_M, DECCFR, CODUSU, NRO_HOGAR) 
 
 #Generamos variable sobre complejidad del puesto de trabajo 'Baja', 'Media' o 'Alta', utilizando el paquete occupationcross 
 df <- reclassify_to_isco08(base = df , variable = PP04D_COD, classif_origin = 'CNO2017', add_skill = T)
 
 #La traducimos al español
 df <- df %>%  
-    mutate(complejidad= case_when(skill_level=='Low' ~ 'Baja', 
+    mutate(complejidad= factor(case_when(skill_level=='Low' ~ 'Baja', 
                                   skill_level=='Medium' ~ 'Media',
-                                  skill_level=='High' ~ 'Alta'))
+                                  skill_level=='High' ~ 'Alta'), 
+                              levels= c('Baja', 'Media', 'Alta')))
 #Generamos otras variables
 df <- df %>% 
         #Rango Etario
@@ -81,11 +82,11 @@ df <- df %>%
                                      CH12 %in% 7:8 & CH13==2 ~ 'Secundario',
                                      CH12 %in% 7:8 & CH13==1 ~ 'Universitario'),
                         levels= c('Primario', 'Secundario', 'Universitario')),
-  
+        #Teletrabajo
           teletrabajo=factor(case_when(str_sub(PP04D_COD, start= 3, end =3) == 3 &
                                          (PP04G == 6)~ "teletrabajo",
                                           TRUE~"presencial")),
-        
+        #Sector
           sector = factor (case_when(str_sub(PP04B_COD, start = 1, end = 3) < 04 ~ "agro",
                                     str_sub(PP04B_COD, start = 1, end = 3) > 04 &(str_sub(PP04B_COD, start = 1, end = 3) < 10) ~ "extractivo",
                                     str_sub(PP04B_COD, start = 1, end = 3)> 09 &(str_sub(PP04B_COD, start = 1, end = 3) < 35) ~ "industria_manuf",
@@ -98,11 +99,11 @@ df <- df %>%
                                              "ss_publico","construcción", "comercio_y_transporte",
                                              "ss_personales_y_prof", "ss_domestico_y_otros")),
         
-        
+      #Genero
         genero= factor(case_when(CH04== 1 ~ "hombre", TRUE~ "mujer"),
                                  levels= c("hombre", 'mujer')),
         
-            
+      #Region      
         region = factor(case_when(REGION == 01 ~ "Gran Buenos Aires",
                                   REGION == 40 ~ "NOA",
                                   REGION == 41 ~ "NEA",
@@ -111,16 +112,9 @@ df <- df %>%
                                   REGION == 44 ~ "Patagonia"),
                         levels= c("Gran Buenos Aires", 'NOA', 'NEA', "Cuyo", "Pampeana", "Patagonia")),
                                   
-        
-#        ipcf = factor(case_when(DECCFR > 0 &(DECCFR < 6)  ~ "1",
- #                               DECCFR > 5 &(DECCFR < 9)  ~ "2",
-  #                              DECCFR > 8 &(DECCFR < 5)  ~ "3"),
-   #                   levels = c("1", "2", "3")), 
-
-        
-        ipcf = factor(case_when(DECCFR > 0 &(DECCFR < 6)  ~ "bajo",
-                                DECCFR > 5 &(DECCFR < 9)  ~ "medio",
-                                DECCFR > 8 &(DECCFR < 5)  ~ "alto"),
+        ipcf = factor(case_when(DECCFR %in% 1:5  ~ "bajo",            ### VERIFICAR: Hice cambios en esta variable xq la catetgoría alta tenia 0 registros
+                                DECCFR %in% 6:8  ~ "medio",
+                                DECCFR %in% 9:10  ~ "alto"),
                       levels = c("bajo", "medio", "alto")), 
 
 
@@ -142,11 +136,7 @@ df <- df %>%
   filter(ESTADO==1 & CAT_OCUP==3) %>%                                 #Filtramos a asalariados ocupados
           
   select(precariedad, genero, nivel_educativo, rango_etario, 
-            sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, dependientes, PONDERA) # Nos quedamos con las variables que entran para el modelo
-
-
-
-
+            sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, dependientes) # Nos quedamos con las variables que entran para el modelo
 
 ```
 
@@ -163,61 +153,90 @@ na_count <- data.frame(na_count)
 df <- df[complete.cases(df), ]
 ```
 
-Aplicamos expansores
-``` {r}
-#df_expanded <- df[rep(row.names(df), df$PONDERA), 1:ncol(df)-1]
-
-# tuve que mutear la linea anterior porque pedirle que calcule 14 modelos con 5 millones de filas cada uno me tiraba a la mierda el R. ver si hacer sampleo  o hablemos que tengo una alternativa
-
-df_expanded <- df
-
-
-
-```
-
 
 ## Analisis exploratorio de los datos
 
 ### Correlación entre variables
 
 ``` {r}
+### Hice la prueba con el boxplot, pero no me convence mucho. También hice la prueba graficando en un plot de barras apiladas los porcentajes de casos en cada categoría. 
 
+#Boxplot convirtiedo en numérica las categóricas que son ordinales
 
-#Calculo chi2 entre precariedad y cada una de las variables predictoras
-CHIS <- lapply(df_expanded[,-1], function(x) chisq.test(df_expanded[,1], x))
-#Imprimo resultados
-rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+df %>% mutate(ipcf2=case_when(ipcf=="bajo"  ~ 1, 
+                              ipcf=="medio" ~ 2, 
+                              ipcf=="alto"  ~ 3)) %>% 
+  ggplot(aes(x = precariedad , y =as.numeric(ipcf2))) + 
+  geom_boxplot(aes(fill=precariedad))
 
-
-#no me salió, pero una buena forma es mostrar con boxplot cada variable convirtiéndo en numérica donde las categóricas son ordinales
-
-#ggplot(data = df_expanded, aes(x = precariedad , y =as.numeric(ipcf))) +   geom_boxplot(aes(fill=precariedad))
-
-
+##Grafico IPCF según precariedad
+#Calculo los datos de porcentaje de casos
+df %>% group_by(precariedad, ipcf) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(precariedad) %>% 
+  mutate(porc=n/sum(n)) %>% 
+  ungroup() %>% 
+  select(precariedad, ipcf, porc) %>% 
+  ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+  geom_bar(aes(fill=ipcf), stat="identity", position = "fill") +
+  scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
+  labs(y="Porcentaje",x="Precariedad")
 
 ```
-La hipótesis nula no se rechaza en ningún caso por lo que la variable explicada parece ser independiente de todo el resto.
+``` {r}
+##Grafico IPCF según precariedad
+#Calculo los datos de porcentaje de casos
+df %>% group_by(precariedad, complejidad) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(precariedad) %>% 
+  mutate(porc=n/sum(n)) %>% 
+  ungroup() %>% 
+  select(precariedad, complejidad, porc) %>% 
+  ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+  geom_bar(aes(fill=complejidad), stat="identity", position = "fill") +
+  scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
+  labs(y="Porcentaje",x="Precariedad")
+```
+
+
+Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadradod de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en un dataframe
 
 ``` {r}
+
+#Ordeno las variables alfabeticamente para no tener lio en el loop y que el vector de nombres coincida con el indice de posicion
+df <- df %>% 
+    select(sort(names(.)))
+
 #Genero vector de variables para correr test sobre todas las columnas
-variables <- ls(df_chi)
+variables <- ls(df)
 
-#Genero lista en donde guardo las tablas con los chi2 para cada variable
-chiList <- list()
+#Genero data frame para hacer la matriz
+chiMatriz <- as.data.frame(variables)
 
-#Con este loop voy guardando los chi2 en una lista
 for (i in 1:length(variables)) { 
+  
 #Estimo test
-CHIS <- lapply(df_chi[,-i], function(x) chisq.test(df_chi[,i], x))
-#Imprimo resultados
-tabla_chi <- rbindlist(lapply(CHIS, tidy), idcol=TRUE)
-#Los guardo en una lista
-chiList[[variables[i]]] <- tabla_chi
+CHIS <- lapply(df[,-i], function(x) chisq.test(df[,i], x))
+
+#Guardo resultados (solo variables y p-value)
+tabla_chi <- rbindlist(lapply(CHIS, tidy), idcol=TRUE) %>% 
+  as.data.frame() %>% 
+  select(.id, p.value) 
+
+#Cambio nombre de columna por el de la variable de la iteración
+colnames(tabla_chi)[2] <- variables[i]
+
+#Lo guardo en la matriz
+chiMatriz <- chiMatriz %>% 
+  left_join(tabla_chi, by= c("variables"=".id"))
 }
 
-#Con la lista generada ahora se pueden ver todos los test, por ejemplo, para los test de la variable complejidad con cada una de las otras variables:
-chiList#[["complejidad"]]
+#Redondeo
+chiMatriz[,-1] <-round(chiMatriz[,-1],4) 
 
+print(chiMatriz)
 
 ```
 
@@ -225,13 +244,13 @@ chiList#[["complejidad"]]
 partimos el dataset
 
 ```{r}
-smp_size <- floor(0.75 * nrow(df_expanded))
+smp_size <- floor(0.75 * nrow(df))
 
 set.seed(123)
-train_ind <- sample(seq_len(nrow(df_expanded)), size = smp_size)
+train_ind <- sample(seq_len(nrow(df)), size = smp_size)
 
-preca_train <- df_expanded[train_ind, ]
-preca_test <- df_expanded[-train_ind, ]
+preca_train <- df[train_ind, ]
+preca_test <- df[-train_ind, ]
 ```
 
 
