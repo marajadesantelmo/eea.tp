@@ -19,6 +19,7 @@ library(purrr)
 library(stringr)
 library(data.table)
 library(pROC)
+library(modelr)
 
 ```
 
@@ -65,8 +66,8 @@ df <- df %>%
                         levels= c('Joven', 'Joven adulto', 'Adulto', 'Adulto mayor')),
                         
         #Precariedad laboral (tomando como referencia realización de aportes jubilatorios)
-          precariedad= factor(case_when(PP07H == 1 ~ "Precario",
-                                        PP07H == 2 ~ "No precario"),
+          precariedad= factor(case_when(PP07H == 1 ~ "No precario",
+                                        PP07H == 2 ~ "Precario"),
                         levels= c('No precario', 'Precario')),
         #Tamaño del establecimiento  
           tamanio= factor(case_when(PP04C %in% 1:6  |(PP04C %in% 99 & PP04C99 == 1)~ "Pequeño",
@@ -111,6 +112,12 @@ df <- df %>%
                         levels= c("Gran Buenos Aires", 'NOA', 'NEA', "Cuyo", "Pampeana", "Patagonia")),
                                   
         
+#        ipcf = factor(case_when(DECCFR > 0 &(DECCFR < 6)  ~ "1",
+ #                               DECCFR > 5 &(DECCFR < 9)  ~ "2",
+  #                              DECCFR > 8 &(DECCFR < 5)  ~ "3"),
+   #                   levels = c("1", "2", "3")), 
+
+        
         ipcf = factor(case_when(DECCFR > 0 &(DECCFR < 6)  ~ "bajo",
                                 DECCFR > 5 &(DECCFR < 9)  ~ "medio",
                                 DECCFR > 8 &(DECCFR < 5)  ~ "alto"),
@@ -138,6 +145,9 @@ df <- df %>%
             sector, tamanio, complejidad, teletrabajo, subsidio, ipcf, dependientes, PONDERA) # Nos quedamos con las variables que entran para el modelo
 
 
+
+
+
 ```
 
 Limpieza de missing values
@@ -150,7 +160,19 @@ na_count <- data.frame(na_count)
 
 #Nos quedamos con casos sin missings
 
-df <- df[complete.cases(df), ] 
+df <- df[complete.cases(df), ]
+```
+
+Aplicamos expansores
+``` {r}
+#df_expanded <- df[rep(row.names(df), df$PONDERA), 1:ncol(df)-1]
+
+# tuve que mutear la linea anterior porque pedirle que calcule 14 modelos con 5 millones de filas cada uno me tiraba a la mierda el R. ver si hacer sampleo  o hablemos que tengo una alternativa
+
+df_expanded <- df
+
+
+
 ```
 
 
@@ -160,15 +182,21 @@ df <- df[complete.cases(df), ]
 
 ``` {r}
 
-#Saco el ponderador
-df_chi <- df %>% select(-PONDERA)
 
 #Calculo chi2 entre precariedad y cada una de las variables predictoras
-CHIS <- lapply(df_chi[,-1], function(x) chisq.test(df_chi[,1], x))
+CHIS <- lapply(df_expanded[,-1], function(x) chisq.test(df_expanded[,1], x))
 #Imprimo resultados
 rbindlist(lapply(CHIS, tidy), idcol=TRUE)
+
+
+#no me salió, pero una buena forma es mostrar con boxplot cada variable convirtiéndo en numérica donde las categóricas son ordinales
+
+#ggplot(data = df_expanded, aes(x = precariedad , y =as.numeric(ipcf))) +   geom_boxplot(aes(fill=precariedad))
+
+
+
 ```
-La variable explicada parece ser independiente de todo el resto
+La hipótesis nula no se rechaza en ningún caso por lo que la variable explicada parece ser independiente de todo el resto.
 
 ``` {r}
 #Genero vector de variables para correr test sobre todas las columnas
@@ -188,36 +216,157 @@ chiList[[variables[i]]] <- tabla_chi
 }
 
 #Con la lista generada ahora se pueden ver todos los test, por ejemplo, para los test de la variable complejidad con cada una de las otras variables:
-chiList[["complejidad"]]
+chiList#[["complejidad"]]
 
 
 ```
 
+
+partimos el dataset
+
+```{r}
+smp_size <- floor(0.75 * nrow(df_expanded))
+
+set.seed(123)
+train_ind <- sample(seq_len(nrow(df_expanded)), size = smp_size)
+
+preca_train <- df_expanded[train_ind, ]
+preca_test <- df_expanded[-train_ind, ]
+```
+
+
+
+ver clases
+```{r}
+
+train <- preca_train %>% 
+  group_by(precariedad) %>% 
+  summarise(numero_casos=n()) %>%
+  mutate(prop = round(prop.table(numero_casos)*100,2))
+
+test <- preca_test %>% 
+  group_by(precariedad) %>% 
+  summarise(numero_casos=n()) %>%
+  mutate(prop = round(prop.table(numero_casos)*100,2))
+# armamos tabla conjunta para graficar
+distrib = cbind(rbind(train, test), dataset = c("train", "train", "test", "test"))
+distrib
+
+
+ggplot(distrib, aes(x = precariedad, y = prop, fill = factor(precariedad), label = prop)) + 
+         geom_bar(stat="identity", position = "dodge") + facet_wrap(~ dataset) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(x = "Precarios", y = "Proporción en %", title = "Proporción de precarios por dataset") + 
+  theme_bw() +
+  scale_fill_brewer(palette="Set1")
+```
+
+
+
 ## Modelo Logit
 
 ``` {r}
-glm1 <- glm(data = df, precariedad ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo, family = 'binomial')
+glm1 <- glm(data = preca_train, precariedad ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo, family = 'binomial')
 
 # veo los resultados
 tidy(glm1)
+
+#restulados del modelo
+glance(glm1)
 
 ```
 
 El modelo da con estimadores estadísticamente significativos. Ser Adulto o Joven adulto disminuye la probabilidad de tener empleo precario con respecto a a ser adulto mayor, la probabilidad de ser precario disminuye cuanto más grande es el establecimiento donde se trabaja y también la probialidad de ser precario aumenta si la complejidad del puesto es baja o media con resecto a complejidad alta.  
 
+
+
+ARMAMOS DIFERENTES MODELOS
+
 ``` {r}
-#Probamos usando el ponderador
 
-glm2 <- glm(data = df, precariedad ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo, family = 'binomial', weights = PONDERA)
+logit_formulas <- formulas(.response = ~ precariedad,
+                           completo = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo,
+                           genero = ~genero,
+                           nivel_educativo = ~ nivel_educativo,
+                           rango_etario = ~ rango_etario,
+                           sector = ~ sector,
+                           tamanio = ~ tamanio,
+                           complejidad = ~ complejidad,
+                           teletrabajo= ~ teletrabajo,
+                           subsidio = ~ subsidio,
+                           ipcf = ~ ipcf,
+                           dependientes = ~ dependientes,
+                           social = ~ genero + nivel_educativo + rango_etario,
+                           productivo = ~ sector + tamanio + complejidad,
+                           ingresos = ~ ipcf + subsidio)
 
-# veo los resultados
-tidy(glm2)
+      
+#creación de modelos
+                     
+models <- tibble(logit_formulas) %>% # dataframe a partir del objeto formulas
+  mutate(models = names(logit_formulas), # columna con los nombres de las formulas
+         expression = paste(logit_formulas), # columna con las expresiones de las formulas
+         mod = map(logit_formulas, ~glm(., family = 'binomial', data = preca_train)))
 
-#VER! Da un warning de que los iteradores no convergen y después los beta dan cualquier valor
+
+#datos de los modelos
+models <- models %>% mutate(tidy = map(mod, tidy)) %>% #formato tidy
+  unnest(tidy) #resultados de los modelos   #tarda bastante en correr!
+
+
+
+models #tarda bastante en correr
+```
+
+
+
+EVALUACIÓN DE MODELOS
+``` {r}
+models <- models %>% 
+  mutate(glance = map(mod,glance))
+# Obtener las medidas de evaluacion de interes
+models <- models %>% 
+  unnest(glance) %>%
+  # Calculamos la deviance explicada
+  mutate(perc_explained_dev = 1-deviance/null.deviance) %>% 
+  select(-c(models, df.null, AIC, BIC)) %>% 
+  arrange(deviance)
+
+models
+                                    
+```
+
+GRÁFICOS DE EVALUACIÓN
+``` {r}
+
+#quise hacer un for para que haga un violin plot para cada modelo pero no me salio!
+
+models <- models %>% 
+  mutate(pred= map(mod, augment, type.predict = "response"))
+
+
+varios <- c("completo","genero", "nivel_educativo", "rango_etario", "sector", "productivo", "ingresos","tamanio", "complejidad", "teletrabajo", "subsidio", "ipcf", "dependientes", "social")
+
+
+for (i in varios){
+  
+  z <-  models$pred[[i]]
+  print(ggplot(z, aes(x=precariedad, y=.fitted, group=precariedad, fill=factor(precariedad))) + geom_violin() +   theme_bw() +   guides(scale="none") +
+  labs(title='Violin plot', subtitle= i, y='Predicted probability'))
+}
+  
+
+########################## hasta acá llegué !!!  #####################
+
+
+
+#elegir el mejor y el peor y aplicar el gráfico Hosmer_Lemeshow_plot
+#para mostrar la diferencia
+
 
 ```
 
-VER: qué categorías ponemos como base en cada variable predictora??
+VER: qué categorías ponemos como base en cada variable predictora?? #sí! esto me quedó pendiente tb. prioricé avanzar con el código
 
 ``` {r}
 #Genero predicciones
