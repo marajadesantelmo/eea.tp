@@ -391,7 +391,10 @@ Los gráficos de violín nos muestran que los modelos completos clasifican mejor
 
 
 ``` {r}
-#Funcion que dieron en la práctica del curso
+#Le agregamos las predicciones del modelo completo a la base de train
+z <-  models$pred['completo']
+preca_train['pred']<-  z[['completo']][[".fitted"]]
+
 
 Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, positive_value, color='forestgreen', nudge_x=0, nudge_y=0.05){
   # Asignar los grupos a las observaciones de acuerdo a la probabilidad predicha
@@ -413,37 +416,52 @@ Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, 
 }
 
 # Modelo completo
-Hosmer_Lemeshow_plot(df, 'pred', 'precariedad', 10, 1) +
-  labs(subtitle="Modelo1")
+Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario') +
+  labs(subtitle="Modelo completo")
+
 ```
 
-
-No lo puedo hacer funcionar VER
 
 ## Curva ROC
 
 ``` {r}
 
-roc <- roc(response=df$precariedad, predictor=df$pred)
+#Le agregamos las predicciones de todos los modelos
+z <-  models$pred['completo2']
+preca_train['pred_completo2']<-  z[['completo2']][[".fitted"]]
 
-ggroc(roc, size=1) +                                           ### Aca podemos graficar varios modelos, ver como lo tienen en la practica
+z <-  models$pred['social']
+preca_train['pred_social']<-  z[['social']][[".fitted"]]
+
+z <-  models$pred['productivo']
+preca_train['pred_productivo']<-  z[['productivo']][[".fitted"]]
+
+z <-  models$pred['ingresos']
+preca_train['pred_ingresos']<-  z[['ingresos']][[".fitted"]]
+
+roc_completo <- roc(response=preca_train$precariedad, predictor=preca_train$pred)
+roc_completo2 <- roc(response=preca_train$precariedad, predictor=preca_train$pred_completo2)
+
+roc_social<- roc(response=preca_train$precariedad, predictor=preca_train$pred_social)
+roc_productivo <- roc(response=preca_train$precariedad, predictor=preca_train$pred_productivo)
+roc_ingresos <- roc(response=preca_train$precariedad, predictor=preca_train$pred_ingresos)
+
+
+
+ggroc(list(completo=roc_completo , completo2=roc_completo2, social=roc_social, productivo=roc_productivo, ingresos=roc_ingresos), size=1) + 
   geom_abline(slope = 1, intercept = 1, linetype='dashed') +
   theme_bw() + 
   labs(title='Curvas ROC', color='Modelo')
 
 ```
 
-Este funciona bien. Ver después de graficar los distintos modelos que hagamos en un mismo gráfico como lo tienen en la práctica
+
 
 ## Punto de corte
 
 ``` {r}
 
-### Modificar lo que viene a continuación
 
-
-
-#Funcion tomada de la practica
 prediction_metrics <- function(cutoff, predictions=prediction_full){
   tab <- predictions %>% 
     mutate(predicted_class = if_else(.fitted > cutoff, 1, 0),
