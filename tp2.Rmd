@@ -21,6 +21,7 @@ library(stringr)
 library(data.table)
 library(pROC)
 library(modelr)
+library(OneR)
 
 ```
 
@@ -187,6 +188,7 @@ df %>% group_by(precariedad, ipcf) %>%
   labs(y="Porcentaje",x="Precariedad", title="Distribución según el nivel de ingresos y precariedad")
 
 ```
+
 El gráfico muestra que casi el 23,4% de los trabajadores no precarios pertencen al estrato de altos ingresos, mientras que tan sólo el 6,2% de los trabajadores precarios pertencen a esa categoría. Lo inverso ocurre con el nivel de bajos ingresos, que repreenta el 74,8% de los casos entre los precarios y el 39% entre los no precarios.
 
 ### Distribución de algunas variables según precariedad del vínculo laboral
@@ -206,6 +208,7 @@ df %>% group_by(precariedad, complejidad) %>%
   scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
   labs(y="Porcentaje",x="Precariedad", title="Distribución según la complejidad del puesto y precariedad")
 ```
+
 Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadradod de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en una matriz
 
 ``` {r}
@@ -462,23 +465,23 @@ ggroc(list(completo=roc_completo , completo2=roc_completo2, social=roc_social, p
 ``` {r}
 
 
-prediction_metrics <- function(cutoff, predictions=prediction_full){
-  tab <- predictions %>% 
-    mutate(predicted_class = if_else(.fitted > cutoff, 1, 0),
-           Survived = factor(Survived))
-  confusionMatrix(table(tab$predicted_class, tab$Survived), positive = "1") %>%
-    tidy() %>%
-    select(term, estimate) %>%
-    filter(term %in% c('accuracy', 'sensitivity', 'specificity', 'precision')) %>%
-    mutate(cutoff = cutoff)
-}
-
-cutoffs = seq(0.05,0.95,0.01)
-logit_pred = map_df(cutoffs, prediction_metrics) %>% 
-  mutate(term = as.factor(term), estimate = round(estimate, 3))
-ggplot(logit_pred, aes(cutoff,estimate, group=term, color=term)) + geom_line(size=1) +
-  theme_bw() +
-  labs(title= 'Accuracy, Sensitivity, Specificity y Precision', subtitle= 'Modelo completo', color="")
+# prediction_metrics <- function(cutoff, predictions=prediction_full){
+#   tab <- predictions %>% 
+#     mutate(predicted_class = if_else(.fitted > cutoff, 1, 0),
+#            Survived = factor(Survived))
+#   confusionMatrix(table(tab$predicted_class, tab$Survived), positive = "1") %>%
+#     tidy() %>%
+#     select(term, estimate) %>%
+#     filter(term %in% c('accuracy', 'sensitivity', 'specificity', 'precision')) %>%
+#     mutate(cutoff = cutoff)
+# }
+# 
+# cutoffs = seq(0.05,0.95,0.01)
+# logit_pred = map_df(cutoffs, prediction_metrics) %>% 
+#   mutate(term = as.factor(term), estimate = round(estimate, 3))
+# ggplot(logit_pred, aes(cutoff,estimate, group=term, color=term)) + geom_line(size=1) +
+#   theme_bw() +
+#   labs(title= 'Accuracy, Sensitivity, Specificity y Precision', subtitle= 'Modelo completo', color="")
 
 
 
