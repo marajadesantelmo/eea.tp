@@ -11,6 +11,7 @@ Seteo inical
 options(scipen = 99)
 library(tidyverse)
 library(eph) 
+library(tibble)
 #devtools::install_github("Guidowe/occupationcross")
 library(occupationcross)
 library(GGally)
@@ -298,7 +299,8 @@ Para encontar el mejor modelo para predecir y/o explicar la probabilidad de tene
 ``` {r}
 
 logit_formulas <- formulas(.response = ~ precariedad,
-                           completo = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo,
+                           completo = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo + dependientes,
+                           completo2 = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio,
 #                           genero = ~genero,
 #                           nivel_educativo = ~ nivel_educativo,
 #                           rango_etario = ~ rango_etario,
@@ -327,24 +329,18 @@ models <- models %>% mutate(tidy = map(mod, tidy)) %>% #formato tidy
   unnest(tidy) #resultados de los modelos 
 
 
-#models   # Se me cuelga la compu cuando le pido que imprima 'models'
+models
 
 ```
 
 
-``` {r}
+El modelo *completo* con todas las variables tiene todos sus estimadores estadísticamente significativos. El signo de los estimadores da resultados intuitivos para la mayoría de éstos. Según el modelo, el pertencer al estrato de ingresos medios resta probabilidad de tener un empleo precario en comparación con quienes pertenecen al estrato de ingresos bajos, ceteris paribus el resto de las variables. La probabilidad disminuye aún más para el caso de quienes pertenecen al estrato de ingresos altos. Tener nivel educativo secundario o universitario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. En cuanto a la edad, la categoría que reduce más la probabildiad de tener un vínculo precario es la de Adulto, luego le sigue Joven adulto y por último Adulto mayor (siempre en comparación con la categoría base de ser Joven y dadas el resto de las variables como constantes). En cuanto al sector de actividad, estar empleado en el servicio doméstico es lo que más probabilidad agrega de tener un vínculo precario. La probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto, mientras que la probabilidad de ser precario aumenta cuando el trabajador se encuentra en un hogar sin personas dependientes de cuidados. Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son los de la variable genero y teletrabajo. El primero nos indica que la probabilidad de tener un vínculo laboral precario disminuye para las mujers, mientras que el segundo indica que la probabilidad de ser precario aumenta para quienes realizan teletrabajo. 
 
-models %>% 
-  filter(models %in% c('social')) %>%
-  mutate(tidy = map(mod, tidy)) %>%  
-  unnest(tidy) %>% 
-  mutate(estimate=round(estimate,5), 
-         p.value=round(p.value,4))
+Por su parte, los modelos *completo2*, *social*, *productivo* e *ingresos* también poseen todos sus estimadores estadísticamente significativos, y el signo de sus coeficientes siguen el mismo patrón que en el caso del modelo *completo*.
 
-```
+#Evaluación de modelos
 
 
-EVALUACIÓN DE MODELOS
 ``` {r}
 models <- models %>% 
   mutate(glance = map(mod,glance))
@@ -360,63 +356,36 @@ models
                                     
 ```
 
+La porporción de la deviance explicada es de 0,34 para el modelo *completo*, de 0,33 para *completo2*, 0,24 para el modelo *productivo*, 0,12 para *social* y, por último, es de 0,11 para *ingresos*.
 
-El modelo *completo* con todas las variables tiene todos sus estimadores estadísticamente significativos. El signo de los estimadores da resultados intuitivos para la mayoría de éstos. Según el modelo, el pertencer al estrato de ingresos medios resta probabilidad de tener un empleo precario en comparación con quienes pertenecen al estrato de ingresos bajos, ceteris paribus el resto de las variables. La probabilidad disminuye aún más para el caso de quienes pertenecen al estrato de ingresos altos. Tener nivel educativo secundario o universitario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. En cuanto a la edad, la categoría que reduce más la probabildiad de tener un vínculo precario es la de Adulto, luego le sigue Joven adulto y por último Adulto mayor (siempre en comparación con la categoría base de ser Joven y dadas el resto de las variables como constantes). En cuanto al sector de actividad, estar empleado en el servicio doméstico es lo que más probabilidad agrega de tener un vínculo precario. La probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto. Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son la para la variable genero y teletrabajo. 
+## Gráficos de evaluación
 
-
-GRÁFICOS DE EVALUACIÓN
 ``` {r}
 
 models <- models %>% 
   mutate(pred= map(mod, augment, type.predict = "response"))
 
 
-varios <- c("completo","genero", "nivel_educativo", "rango_etario", "sector", "productivo", "ingresos","tamanio", "complejidad", "teletrabajo", "subsidio", "ipcf", "dependientes", "social")
+#varios <- c("completo","genero", "nivel_educativo", "rango_etario", "sector", "productivo", "ingresos","tamanio", #"complejidad", "teletrabajo", "subsidio", "ipcf", "dependientes", "social")
+
+varios <- c('completo', 'completo2',"productivo", "ingresos", 'social')
 
 
 for (i in varios){
-  
-  z <-  models$pred[[i]]
-  print(ggplot(z, aes(x=precariedad, y=.fitted, group=precariedad, fill=factor(precariedad))) + geom_violin() +   theme_bw() +   guides(scale="none") +
+   z <-  models$pred[i] 
+  z2 <- cbind(factor(z[[i]][["precariedad"]]), z[[i]][[".fitted"]]) %>% as.data.frame() %>% 
+             mutate(precariedad= factor(case_when(V1 == 1 ~ "No precario",
+                                        V1 == 2 ~ "Precario"),
+                        levels= c('No precario', 'Precario')))
+    
+  print(ggplot(z2, aes(x=precariedad, y=V2, group=precariedad, fill=factor(precariedad))) + geom_violin() +   theme_bw() +   guides(scale="none") +
   labs(title='Violin plot', subtitle= i, y='Predicted probability'))
+ 
 }
-  
-
-########################## hasta acá llegué !!!  #####################
-
-
-
-#elegir el mejor y el peor y aplicar el gráfico Hosmer_Lemeshow_plot
-#para mostrar la diferencia
-
 
 ```
 
-VER: qué categorías ponemos como base en cada variable predictora?? #sí! esto me quedó pendiente tb. prioricé avanzar con el código
-
-``` {r}
-#Genero predicciones
-
-df$pred <- glm1$fitted.values
-
-
-
-```
-
-
-#Evaluación de modelos
-
-## Violin plot
-
-``` {r}
-ggplot(df, aes(x=precariedad, y=pred, group=precariedad, fill=factor(precariedad))) + 
-  geom_violin() +
-  theme_bw() +
-  guides(scale="none") +
-  labs(title='Violin plot', subtitle='Modelo 1', y='Probabilidad predicha')
-```
-
-El modelo con todas las predictoras clasifica bien a los precarios, pero no es muy bueno para los no precarios.
+Los gráficos de violín nos muestran que los modelos completos clasifican mejor a los casos. Sin embargo, vale la pena remarcar que el modelo parece clasificar menor a los no precarios que a los precarios, ya que entre estos últimos hay muchos casos a los que se les asigna una baja probabilidad de ser precarios cuando en realidad sí lo son.
 
 ## Gráfico de Hosmer-Lemeshow
 
