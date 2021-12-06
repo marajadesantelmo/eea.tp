@@ -1,3 +1,4 @@
+
 ---
 title: "TP2"
 output: html_document
@@ -23,11 +24,7 @@ library(pROC)
 library(modelr)
 library(OneR)
 library(caret)
-library(knitr)
-library(kableExtra)
-library(stringr)
-
-
+library(plot.matrix)
 
 ```
 
@@ -49,16 +46,15 @@ En este trabajo vamos a explicar la probabilidad de tener un trabajo precario se
 
 ```{r echo=TRUE, warning=FALSE}
 
-  df <- readRDS('EPH2019_3.Rds')
-  
-  df <- df %>% 
-  
-    select(ESTADO, CAT_OCUP, REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
-           PP04C, PP04C99, PP04G, V5_M, DECCFR, CODUSU, NRO_HOGAR) 
-  
-  #Generamos variable sobre complejidad del puesto de trabajo 'Baja', 'Media' o 'Alta', utilizando el paquete occupationcross 
-  df <- reclassify_to_isco08(base = df , variable = PP04D_COD, classif_origin = 'CNO2017', add_skill = T)
-  
+df <- readRDS('EPH2019_3.Rds')
+
+df <- df %>% 
+
+  select(ESTADO, CAT_OCUP, REGION, CH04, CH06, CH12, CH13, PP04D_COD, PP04B_COD, PP07H, #Nos quedamos con las variables que utlizaremos
+         PP04C, PP04C99, PP04G, V5_M, DECCFR, CODUSU, NRO_HOGAR) 
+
+#Generamos variable sobre complejidad del puesto de trabajo 'Baja', 'Media' o 'Alta', utilizando el paquete occupationcross 
+df <- reclassify_to_isco08(base = df , variable = PP04D_COD, classif_origin = 'CNO2017', add_skill = T)
 
 #La traducimos al español
 df <- df %>%  
@@ -96,13 +92,13 @@ df <- df %>%
                                          (PP04G == 6)~ "teletrabajo",
                                           TRUE~"presencial")),
         #Sector
-          sector = factor (case_when(PP04B_COD < 301 ~ "agro",
-                                    PP04B_COD > 301 & (PP04B_COD < 1000) ~ "extractivo",
-                                    PP04B_COD > 1000 & (PP04B_COD < 3500) ~ "industria_manuf",
-                                    PP04B_COD > 3400 & (PP04B_COD < 4000) ~ "ss_publico",
-                                    PP04B_COD == 4000 ~ "construcción",
-                                    PP04B_COD > 4400 & (PP04B_COD < 5400) ~ "comercio_y_transporte",
-                                    PP04B_COD > 4400 & (PP04B_COD < 9700) ~ "ss_personales_y_prof",
+          sector = factor (case_when(str_sub(PP04B_COD, start = 1, end = 3) < 04 ~ "agro",
+                                    str_sub(PP04B_COD, start = 1, end = 3) > 04 &(str_sub(PP04B_COD, start = 1, end = 3) < 10) ~ "extractivo",
+                                    str_sub(PP04B_COD, start = 1, end = 3)> 09 &(str_sub(PP04B_COD, start = 1, end = 3) < 35) ~ "industria_manuf",
+                                    str_sub(PP04B_COD, start = 1, end = 3) > 34 &(str_sub(PP04B_COD, start = 1, end = 3) < 40) ~ "ss_publico",
+                                    str_sub(PP04B_COD, start = 1, end = 3) == 40 ~ "construcción",
+                                    str_sub(PP04B_COD, start = 1, end = 3) > 44 &(str_sub(PP04B_COD, start = 1, end = 3) < 54) ~ "comercio_y_transporte",
+                                    str_sub(PP04B_COD, start = 1, end = 3) > 44 &(str_sub(PP04B_COD, start = 1, end = 3) < 97) ~ "ss_personales_y_prof",
                                              TRUE ~ "ss_domestico_y_otros"),
                                     levels=c("agro", "extractivo", "industria_manuf",
                                              "ss_publico","construcción", "comercio_y_transporte",
@@ -173,25 +169,27 @@ Para comenzar realizamos un análisis exploratorio del dataset, estudiando las p
 ``` {r}
 ### Hice la prueba con el boxplot, pero no me convence mucho. También hice la prueba graficando en un plot de barras apiladas los porcentajes de casos en cada categoría. 
 
+#Boxplot convirtiedo en numérica las categóricas que son ordinales
+
+df %>% mutate(ipcf2=case_when(ipcf=="bajo"  ~ 1, 
+                              ipcf=="medio" ~ 2, 
+                              ipcf=="alto"  ~ 3)) %>% 
+  ggplot(aes(x = precariedad , y =as.numeric(ipcf2))) + 
+  geom_boxplot(aes(fill=precariedad))
 
 ##Grafico IPCF según precariedad
 #Calculo los datos de porcentaje de casos
-
-variables <-  c('genero', 'nivel_educativo', 'rango_etario', 'sector', 'tamanio')# , 'complejidad", "teletrabajo", "subsidio", "ipcf","dependientes")
-
-df %>% group_by(precariedad, nivel_educativo) %>% 
-    count() %>% 
-    ungroup() %>% 
-    group_by(precariedad) %>% 
-    mutate(porc=n/sum(n)) %>% 
-    ungroup() %>% 
-    select(precariedad, nivel_educativo, porc) %>% 
-    ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
-    geom_bar(aes(fill=nivel_educativo), stat="identity", position = "fill") +
-    scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
-    labs(y="Porcentaje",x="Precariedad", title="Distribución según la nivel_educativo y precariedad")
-
-
+df %>% group_by(precariedad, ipcf) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(precariedad) %>% 
+  mutate(porc=n/sum(n)) %>% 
+  ungroup() %>% 
+  select(precariedad, ipcf, porc) %>% 
+  ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+  geom_bar(aes(fill=ipcf), stat="identity", position = "fill") +
+  scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
+  labs(y="Porcentaje",x="Precariedad", title="Distribución según el nivel de ingresos y precariedad")
 
 ```
 
@@ -215,7 +213,7 @@ df %>% group_by(precariedad, complejidad) %>%
   labs(y="Porcentaje",x="Precariedad", title="Distribución según la complejidad del puesto y precariedad")
 ```
 
-Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadradod de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en un heatmap donde podemos observar gráficamente los p-valores que nos permite indentificar en qué casaos rechazamos H0=dependencia entre variables. 
+Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadradod de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en una matriz
 
 ``` {r}
 
@@ -310,31 +308,27 @@ ggplot(distrib, aes(x = precariedad, y = prop, fill = factor(precariedad), label
   theme_bw() +
   scale_fill_brewer(palette="Set1")
 ```
-Como se observa en los gráficos, la distribución aleatoria de casos en las dos bases quedó aproximadamente distribuida en una relación de 70-30 entre no precarios y precarios.
+Como se observa en los gráficos, la distribución de casos en las dos bases quedó aproximadamente distribuida en una relación de 70-30 entre no precarios y precarios.
 
 ## Modelos propuestos
 
-Para encontar el mejor modelo para predecir y/o explicar la probabilidad de tener un trabajo precario proponemos distintos modelos.
- 1- El modelo *completo* contiene todas las variables predictoras disponibles.
- 2- el modelo *genero* utiliza unicamente la variable genero como predictora
- 3- el modelo *nivel_educativo* utiliza unicamente la variable nivel educativo como predictoira
- 4- el modelo *teletrabajo* utiliza unicamente la variable teletrabajo como predictora
- 5- el modelo *dependientes* utiliza unicamente la variable dependientes como predictora
- 6- el modelo *social* utiliza las variables sociales del dataset: genero, nivel_educativo  y rango_etario
- 7- el modelo *productivo* utiliza las variables productivas del dataset: sector, tamanio y complejidad
- 8- el modelo *ingresos* utiliza las variables de ingresos del dataset: decil del ipcf y si recibe o no subsidios la persona.
- 
-
-Evaluamos la posibilidad de agregar un noveno modelo donde utilicemos todas las variables salvo teletrabajo y dependientes por estar correlacionadas, pero su performance no mejoraba respecto al modelo completo por lo que fue excluida de la presentación.
+Para encontar el mejor modelo para predecir y/o explicar la probabilidad de tener un trabajo precario proponemos distintos modelos. El modelo *completo* contiene todas las variables predictoras construidas. En el modelo *completo2* quitamos las variables *teletrabajo* y *dependientes* que guardan relaciones de dependencias con otras variables del dataset. También probamos con las variables que refieren a atributos sociales de las personas (modelo *social*), con las varaibles de ínndole económica y con las dos variables referidas a los ingresos. Por último se prueban distintos modelos con tan sólo una de las variables construidas por modelo.
 
 
 ``` {r}
 
 logit_formulas <- formulas(.response = ~ precariedad,
                            completo = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio + teletrabajo + dependientes,
-                            genero = ~genero,
+                           completo2 = ~ genero + ipcf + nivel_educativo + rango_etario + sector+  tamanio + complejidad + subsidio,
+                           genero = ~genero,
                            nivel_educativo = ~ nivel_educativo,
+                           rango_etario = ~ rango_etario,
+                           sector = ~ sector,
+                           tamanio = ~ tamanio,
+                           complejidad = ~ complejidad,
                            teletrabajo= ~ teletrabajo,
+                           subsidio = ~ subsidio,
+                           ipcf = ~ ipcf,
                            dependientes = ~ dependientes,
                            social = ~ genero + nivel_educativo + rango_etario,
                            productivo = ~ sector + tamanio + complejidad,
@@ -350,32 +344,16 @@ models <- tibble(logit_formulas) %>% # dataframe a partir del objeto formulas
 
 
 #datos de los modelos
-models <- models %>% mutate(tidy = map(mod, tidy)) %>% # tidy
+models <- models %>% mutate(tidy = map(mod, tidy)) %>% #formato tidy
   unnest(tidy) #resultados de los modelos 
 
-models
 
-
-
+tidy(models)
 
 ```
 
 
-El modelo *completo* con todas las variables tiene casi todos sus estimadores estadísticamente significativos. El signo de los estimadores da resultados intuitivos para la mayoría de éstos.
-
-Según el modelo, el pertencer al estrato de ingresos medios resta probabilidad de tener un empleo precario en comparación con quienes pertenecen al estrato de ingresos bajos, ceteris paribus el resto de las variables. La probabilidad disminuye aún más para el caso de quienes pertenecen al estrato de ingresos altos.
-
-Tener nivel educativo secundario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. El título universitario, por su parte resulta no significativo a este nivel de confianza. La explicación económica destras de este fenómeno....
-
-En cuanto a la edad, la categoría que reduce más la probabildiad de tener un vínculo precario es la de Adulto, luego le sigue Joven adulto y por último Adulto mayor (siempre en comparación con la categoría base de ser Joven y dadas el resto de las variables como constantes).
-
-En cuanto al sector de actividad, estar empleado en el servicio doméstico es lo que más probabilidad agrega de tener un vínculo precario. 
-
-#################
-#hay un problema con las variables. faltan sectores!!
-####################
-
-La probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto, mientras que la probabilidad de ser precario aumenta cuando el trabajador se encuentra en un hogar sin personas dependientes de cuidados. Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son los de la variable genero y teletrabajo. El primero nos indica que la probabilidad de tener un vínculo laboral precario disminuye para las mujers, mientras que el segundo indica que la probabilidad de ser precario aumenta para quienes realizan teletrabajo. 
+El modelo *completo* con todas las variables tiene todos sus estimadores estadísticamente significativos. El signo de los estimadores da resultados intuitivos para la mayoría de éstos. Según el modelo, el pertencer al estrato de ingresos medios resta probabilidad de tener un empleo precario en comparación con quienes pertenecen al estrato de ingresos bajos, ceteris paribus el resto de las variables. La probabilidad disminuye aún más para el caso de quienes pertenecen al estrato de ingresos altos. Tener nivel educativo secundario o universitario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. En cuanto a la edad, la categoría que reduce más la probabildiad de tener un vínculo precario es la de Adulto, luego le sigue Joven adulto y por último Adulto mayor (siempre en comparación con la categoría base de ser Joven y dadas el resto de las variables como constantes). En cuanto al sector de actividad, estar empleado en el servicio doméstico es lo que más probabilidad agrega de tener un vínculo precario. La probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto, mientras que la probabilidad de ser precario aumenta cuando el trabajador se encuentra en un hogar sin personas dependientes de cuidados. Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son los de la variable genero y teletrabajo. El primero nos indica que la probabilidad de tener un vínculo laboral precario disminuye para las mujers, mientras que el segundo indica que la probabilidad de ser precario aumenta para quienes realizan teletrabajo. 
 
 Por su parte, los modelos *completo2*, *social*, *productivo* e *ingresos* también poseen todos sus estimadores estadísticamente significativos, y el signo de sus coeficientes siguen el mismo patrón que en el caso del modelo *completo*.
 
@@ -390,9 +368,8 @@ models <- models %>%
   unnest(glance) %>%
   # Calculamos la deviance explicada
   mutate(perc_explained_dev = 1-deviance/null.deviance) %>% 
-  select(-c(df.null, AIC, BIC, estimate, std.error, statistic, p.value, term)) %>% 
-  arrange(deviance) %>% 
-  unique()
+  select(-c(df.null, AIC, BIC)) %>% 
+  arrange(deviance)
 
 models
                                     
@@ -408,8 +385,9 @@ models <- models %>%
   mutate(pred= map(mod, augment, type.predict = "response"))
 
 
-varios <- c("completo", "genero", "nivel_educativo", "teletrabajo", "dependientes", "social", "productivo", "ingresos")
-            
+varios <- c("completo", "completo2","genero", "nivel_educativo", "rango_etario", "sector", "productivo", "ingresos","tamanio", "complejidad", "teletrabajo", "subsidio", "ipcf", "dependientes", "social")
+
+#varios <- c('completo', 'completo2',"productivo", "ingresos", 'social')
 
 
 for (i in varios){
@@ -436,7 +414,7 @@ Los gráficos de violín nos muestran que los modelos completos clasifican mejor
 
 
 
-Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, positive_value, color, nudge_x=0, nudge_y=0.05){
+Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, positive_value, color='forestgreen', nudge_x=0, nudge_y=0.05){
   # Asignar los grupos a las observaciones de acuerdo a la probabilidad predicha
   dataset['group'] <- bin(dataset[predicted_column], nbins = bins, method = 'l', labels=c(1:bins))
   # Contar la cantidad de casos positivos por grupo
@@ -461,7 +439,7 @@ z <-  models$pred["completo"]
 preca_train$pred <-  z[["completo"]][[".fitted"]]
 
 # Modelo completo
-Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario', color= "forestgreen") +
+Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario') +
   labs(subtitle="Modelo completo")
 
 
@@ -469,7 +447,7 @@ z <-  models$pred["productivo"]
 preca_train$pred <-  z[["productivo"]][[".fitted"]]
 
 # Modelo completo
-Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario', color= "red") +
+Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario') +
   labs(subtitle="Modelo productivo")
 
 #no entiendo por qué en el segundo caso grafica 5 bins y no 10!!
@@ -486,6 +464,9 @@ Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario', color= 
 z <-  models$pred['completo']
 preca_train['pred_completo']<-  z[['completo']][[".fitted"]]
 
+z <-  models$pred['completo2']
+preca_train['pred_completo2']<-  z[['completo2']][[".fitted"]]
+
 z <-  models$pred['social']
 preca_train['pred_social']<-  z[['social']][[".fitted"]]
 
@@ -495,23 +476,16 @@ preca_train['pred_productivo']<-  z[['productivo']][[".fitted"]]
 z <-  models$pred['ingresos']
 preca_train['pred_ingresos']<-  z[['ingresos']][[".fitted"]]
 
-
-z <-  models$pred['dependientes']
-preca_train['pred_dependientes']<-  z[['dependientes']][[".fitted"]]
-
-
 roc_completo <- roc(response=preca_train$precariedad, predictor=preca_train$pred_completo)
+roc_completo2 <- roc(response=preca_train$precariedad, predictor=preca_train$pred_completo2)
 
 roc_social<- roc(response=preca_train$precariedad, predictor=preca_train$pred_social)
 roc_productivo <- roc(response=preca_train$precariedad, predictor=preca_train$pred_productivo)
 roc_ingresos <- roc(response=preca_train$precariedad, predictor=preca_train$pred_ingresos)
 
 
-roc_dependientes <- roc(response=preca_train$precariedad, predictor=preca_train$pred_dependientes)
 
-
-
-ggroc(list(completo=roc_completo , social=roc_social, productivo=roc_productivo, ingresos=roc_ingresos, dependientes = roc_dependientes), size=1) + 
+ggroc(list(completo=roc_completo , completo2=roc_completo2, social=roc_social, productivo=roc_productivo, ingresos=roc_ingresos), size=1) + 
   geom_abline(slope = 1, intercept = 1, linetype='dashed') +
   theme_bw() + 
   labs(title='Curvas ROC', color='Modelo')
@@ -598,7 +572,6 @@ confusionMatrix(table(table_test$predicted_class, table_test$precariedad), posit
 Predice divino. Acc de 0.8 con el P-Value [Acc > NIR] : < 0.00000000000000022 significa que existe evidencia estadísticamente significativa para decir que la precisión del modelo es mejor que la tasa sin información
 
 
-
 BALANCEO DE CLASE
 
 como el desbalance es aproximadamente 70-30, vamos a ponderar a los precarios para ver el resultado en el modelo completo
@@ -675,5 +648,6 @@ ggplot(z2, aes(x=precariedad, y=V2, group=precariedad, fill=factor(precariedad))
 
 
 ```
+
 
 
