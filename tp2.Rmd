@@ -7,7 +7,8 @@ output: html_document
 
 Seteo inical
 
-```{r echo=FALSE, warning=FALSE}
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+
 options(scipen = 99)
 library(tidyverse)
 library(eph) 
@@ -26,9 +27,7 @@ library(caret)
 library(knitr)
 library(kableExtra)
 library(stringr)
-
-
-
+library(gridExtra)
 ```
 
 ## Preprocesamiento
@@ -166,20 +165,14 @@ df <- df[complete.cases(df), ]
 
 ## Analisis exploratorio de los datos
 
-Para comenzar realizamos un análisis exploratorio del dataset, estudiando las posibles relaciones dependencia entre variables y la distribuciónd de las principales variables categóricas entre trabajadores precarios y no precarios.
+Para comenzar realizamos un análisis exploratorio del dataset, estudiando las posibles relaciones dependencia entre variables y la distribución de las principales variables categóricas entre trabajadores precarios y no precarios.
 
-### Correlación entre variables
+### Distribución de variables según precariedad del vínculo laboral
 
 ``` {r}
-### Hice la prueba con el boxplot, pero no me convence mucho. También hice la prueba graficando en un plot de barras apiladas los porcentajes de casos en cada categoría. 
-
-
-##Grafico IPCF según precariedad
-#Calculo los datos de porcentaje de casos
-
-variables <-  c('genero', 'nivel_educativo', 'rango_etario', 'sector', 'tamanio')# , 'complejidad", "teletrabajo", "subsidio", "ipcf","dependientes")
-
-df %>% group_by(precariedad, nivel_educativo) %>% 
+  
+  ##Nivel educativo
+ g1 <-  df %>% group_by(precariedad, nivel_educativo) %>% 
     count() %>% 
     ungroup() %>% 
     group_by(precariedad) %>% 
@@ -188,36 +181,78 @@ df %>% group_by(precariedad, nivel_educativo) %>%
     select(precariedad, nivel_educativo, porc) %>% 
     ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
     geom_bar(aes(fill=nivel_educativo), stat="identity", position = "fill") +
-    scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
-    labs(y="Porcentaje",x="Precariedad", title="Distribución según la nivel_educativo y precariedad")
+    labs(y="Porcentaje",x="Precariedad", title="Nivel Educativo")
+  
+  #subsidio
+g2 <-   df %>% group_by(precariedad, subsidio) %>% 
+    count() %>% 
+    ungroup() %>% 
+    group_by(precariedad) %>% 
+    mutate(porc=n/sum(n)) %>% 
+    ungroup() %>% 
+    select(precariedad,   subsidio, porc) %>% 
+    ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+    geom_bar(aes(fill=  subsidio), stat="identity", position = "fill") +
+    labs(y="Porcentaje",x="Precariedad", title="Subsidio")
+  
+#Tamaño
+g3<-  df %>% group_by(precariedad,  tamanio) %>% 
+    count() %>% 
+    ungroup() %>% 
+    group_by(precariedad) %>% 
+    mutate(porc=n/sum(n)) %>% 
+    ungroup() %>% 
+    select(precariedad,  tamanio, porc) %>% 
+    ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+    geom_bar(aes(fill= tamanio), stat="identity", position = "fill") +
+    labs(y="Porcentaje",x="Precariedad", title="Tamaño")
 
-
-
-```
-
-El gráfico muestra que casi el 23,4% de los trabajadores no precarios pertencen al estrato de altos ingresos, mientras que tan sólo el 6,2% de los trabajadores precarios pertencen a esa categoría. Lo inverso ocurre con el nivel de bajos ingresos, que repreenta el 74,8% de los casos entre los precarios y el 39% entre los no precarios.
-
-### Distribución de algunas variables según precariedad del vínculo laboral
-
-``` {r}
-##Grafico complejidad según precariedad
-#Calculo los datos de porcentaje de casos
-df %>% group_by(precariedad, complejidad) %>% 
+#Rango etario
+g4 <-  df %>% group_by(precariedad,  rango_etario) %>% 
   count() %>% 
   ungroup() %>% 
   group_by(precariedad) %>% 
   mutate(porc=n/sum(n)) %>% 
   ungroup() %>% 
-  select(precariedad, complejidad, porc) %>% 
+  select(precariedad,  rango_etario, porc) %>% 
   ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
-  geom_bar(aes(fill=complejidad), stat="identity", position = "fill") +
-  scale_fill_manual(values = c("#3D5B59","#B5E5CF","#FCB5AC"))+
-  labs(y="Porcentaje",x="Precariedad", title="Distribución según la complejidad del puesto y precariedad")
+  geom_bar(aes(fill= rango_etario), stat="identity", position = "fill") +
+  labs(y="Porcentaje",x="Precariedad", title="Rango etario")
+
+#Rango etario
+g5 <-  df %>% group_by(precariedad,  ipcf) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(precariedad) %>% 
+  mutate(porc=n/sum(n)) %>% 
+  ungroup() %>% 
+  select(precariedad,  ipcf, porc) %>% 
+  ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+  geom_bar(aes(fill= ipcf), stat="identity", position = "fill") +
+  labs(y="Porcentaje",x="Precariedad", title="Nivel de ingresos")
+
+#Complejidad
+g6 <-  df %>% group_by(precariedad,  complejidad) %>% 
+  count() %>% 
+  ungroup() %>% 
+  group_by(precariedad) %>% 
+  mutate(porc=n/sum(n)) %>% 
+  ungroup() %>% 
+  select(precariedad,  complejidad, porc) %>% 
+  ggplot(aes(x = precariedad , y=porc)) +     #Armo grafico de barras
+  geom_bar(aes(fill= complejidad), stat="identity", position = "fill") +
+  labs(y="Porcentaje",x="Precariedad", title="Complejidad")
+  
+grid.arrange(g1, g2, g3, g4, g5, g6)
+
+
 ```
 
-Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadradod de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en un heatmap donde podemos observar gráficamente los p-valores que nos permite indentificar en qué casaos rechazamos H0=dependencia entre variables. 
+### Correlación entre variables
 
-``` {r}
+Ahora pasemos a analizar la existencia de relaciones de dependencia entre las variables categóricas mediante el test chi cuadrado de Pearson. Para ello calculamos el test entre todas las variables y las presentamos en un heatmap donde podemos observar gráficamente los p-valores que nos permite indentificar en qué casaos rechazamos H0=dependencia entre variables. 
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
 
 #Ordeno las variables alfabeticamente para que el vector de nombres coincida con el indice de posicion
 df <- df %>% 
@@ -324,7 +359,6 @@ Para encontar el mejor modelo para predecir y/o explicar la probabilidad de tene
  7- el modelo *productivo* utiliza las variables productivas del dataset: sector, tamanio y complejidad
  8- el modelo *ingresos* utiliza las variables de ingresos del dataset: decil del ipcf y si recibe o no subsidios la persona.
  
-
 Evaluamos la posibilidad de agregar un noveno modelo donde utilicemos todas las variables salvo teletrabajo y dependientes por estar correlacionadas, pero su performance no mejoraba respecto al modelo completo por lo que fue excluida de la presentación.
 
 
@@ -339,7 +373,6 @@ logit_formulas <- formulas(.response = ~ precariedad,
                            social = ~ genero + nivel_educativo + rango_etario,
                            productivo = ~ sector + tamanio + complejidad,
                            ingresos = ~ ipcf + subsidio)
-
       
 #creación de modelos
                      
@@ -353,9 +386,8 @@ models <- tibble(logit_formulas) %>% # dataframe a partir del objeto formulas
 models <- models %>% mutate(tidy = map(mod, tidy)) %>% # tidy
   unnest(tidy) #resultados de los modelos 
 
+
 models
-
-
 
 
 ```
@@ -365,19 +397,17 @@ El modelo *completo* con todas las variables tiene casi todos sus estimadores es
 
 Según el modelo, el pertencer al estrato de ingresos medios resta probabilidad de tener un empleo precario en comparación con quienes pertenecen al estrato de ingresos bajos, ceteris paribus el resto de las variables. La probabilidad disminuye aún más para el caso de quienes pertenecen al estrato de ingresos altos.
 
-Tener nivel educativo secundario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. El título universitario, por su parte resulta no significativo a este nivel de confianza. La explicación económica destras de este fenómeno....
+Tener nivel educativo secundario disminuye la probabilidad de tener un vínculo laboral precario con respecto a quienes solo tienen el nivel primario. El título universitario, por su parte resulta no significativo a este nivel de confianza. 
 
 En cuanto a la edad, la categoría que reduce más la probabildiad de tener un vínculo precario es la de Adulto, luego le sigue Joven adulto y por último Adulto mayor (siempre en comparación con la categoría base de ser Joven y dadas el resto de las variables como constantes).
 
-En cuanto al sector de actividad, estar empleado en el servicio doméstico es lo que más probabilidad agrega de tener un vínculo precario. 
+En cuanto al sector de actividad, los dos sectores con coeficientes más grandes son aquellos que se caracterizan por la precariedad laboral. Estar empleado en el sector de la construcción es lo que más probabilidad de ser precario agrega con respecto a la categoría basal (agro). En segundo lugar se encuentra el servicio doméstico, que también aumenta la probabilidad de ser precario con respecto a la categoría base, dadas como constantes el resto de las variables. 
 
-#################
-#hay un problema con las variables. faltan sectores!!
-####################
+Por su parte, la probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto, mientras que la probabilidad aumenta cuando el trabajador se encuentra en un hogar sin personas dependientes de cuidados. 
 
-La probabidad de tener un trabajo precario disminuye cuando aumenta el tamaño del establecimeinto y la complejidad del puesto, mientras que la probabilidad de ser precario aumenta cuando el trabajador se encuentra en un hogar sin personas dependientes de cuidados. Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son los de la variable genero y teletrabajo. El primero nos indica que la probabilidad de tener un vínculo laboral precario disminuye para las mujers, mientras que el segundo indica que la probabilidad de ser precario aumenta para quienes realizan teletrabajo. 
+Por último, la probabilidad de tener un trabajo precario aumenta cuando se cobra un subsidio. Los dos estimadores con resultados contraintuitivos son los de la variable genero y teletrabajo. El primero nos indica que la probabilidad de tener un vínculo laboral precario disminuye para las mujers, mientras que el segundo indica que la probabilidad de ser precario aumenta para quienes realizan teletrabajo. 
 
-Por su parte, los modelos *completo2*, *social*, *productivo* e *ingresos* también poseen todos sus estimadores estadísticamente significativos, y el signo de sus coeficientes siguen el mismo patrón que en el caso del modelo *completo*.
+Por su parte, los modelos *social*, *productivo* e *ingresos* también poseen todos sus estimadores estadísticamente significativos, y el signo de sus coeficientes siguen el mismo patrón que en el caso del modelo *completo*.
 
 #Evaluación de modelos
 
@@ -432,9 +462,6 @@ Los gráficos de violín nos muestran que los modelos completos clasifican mejor
 
 
 ``` {r}
-#Le agregamos las predicciones del modelo completo a la base de train
-
-
 
 Hosmer_Lemeshow_plot <- function(dataset, predicted_column, class_column, bins, positive_value, color, nudge_x=0, nudge_y=0.05){
   # Asignar los grupos a las observaciones de acuerdo a la probabilidad predicha
@@ -471,8 +498,6 @@ preca_train$pred <-  z[["productivo"]][[".fitted"]]
 # Modelo completo
 Hosmer_Lemeshow_plot(preca_train, 'pred', 'precariedad', 10, 'Precario', color= "red") +
   labs(subtitle="Modelo productivo")
-
-#no entiendo por qué en el segundo caso grafica 5 bins y no 10!!
 
 
 ```
@@ -580,7 +605,7 @@ confusionMatrix(table(preca_train$predicted_class, preca_train$precariedad), pos
 Se observa que en el caso del punto de corte "política pública" la cantidad de Precarios clasificados como No precarios disminuye.
 
 
-DATASET DE TESTING
+## Dataset de testing
 
 ```{r}
 
@@ -599,7 +624,7 @@ Predice divino. Acc de 0.8 con el P-Value [Acc > NIR] : < 0.00000000000000022 si
 
 
 
-BALANCEO DE CLASE
+#Balanceo de clases 
 
 como el desbalance es aproximadamente 70-30, vamos a ponderar a los precarios para ver el resultado en el modelo completo
 
@@ -629,9 +654,10 @@ balanced_models <- balanced_models %>%
 
 balanced_models
 ```
-evaluación y punto de corte
-```{r}
 
+## Evaluación y punto de corte
+
+```{r}
 
 balanced_models <- balanced_models %>% 
   mutate(pred= map(mod, augment, type.predict = "response"))
